@@ -1,5 +1,6 @@
 import typer
 import os
+import gc
 import time
 import json
 import base64
@@ -236,8 +237,8 @@ def _run_compare(styles: list[str], target: str, output_dir: str, model_name: st
     timestamp = os.environ.get("_COMPARE_TIMESTAMP") or time.strftime("%Y-%m-%d_%H-%M-%S")
     compare_base = Path(output_dir) / "compare" / timestamp
 
-    # 4. Loop over styles
-    all_results = {}
+    # 4. Generate all prompts first, then free the text model
+    style_prompts = {}
     for style_id in styles:
         typer.echo(f"\n{'='*60}")
         typer.echo(f"Style: {style_id}")
@@ -252,11 +253,22 @@ def _run_compare(styles: list[str], target: str, output_dir: str, model_name: st
 
         img_prompt = prompt_result["image_prompt"]
         typer.echo(f"Image concept: {img_prompt[:120]}...")
+        style_prompts[style_id] = prompt_result
+
+    # Free text model memory before loading image models
+    gc.collect()
+
+    # 5. Generate images per style
+    all_results = {}
+    for style_id, prompt_result in style_prompts.items():
+        img_prompt = prompt_result["image_prompt"]
+        typer.echo(f"\n{'='*60}")
+        typer.echo(f"Style: {style_id}")
+        typer.echo(f"{'='*60}")
 
         style_dir = compare_base / style_id
         style_dir.mkdir(parents=True, exist_ok=True)
 
-        # 5. Generate one image per model
         results = []
         style_images = []
         for model_id, model_config in IMAGE_MODELS.items():
@@ -290,6 +302,9 @@ def _run_compare(styles: list[str], target: str, output_dir: str, model_name: st
             except Exception as e:
                 typer.echo(f"  Error with {model_id}: {e}", err=True)
                 results.append({"model": model_id, "error": str(e)})
+
+            # Free image model memory before loading the next one
+            gc.collect()
 
         # Show side-by-side preview
         if len(style_images) > 1:
