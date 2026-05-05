@@ -407,7 +407,7 @@ def compare(
         for i, style_id in enumerate(styles):
             typer.echo(f"\n[{i+1}/{len(styles)}] Style: {style_id}")
             cmd = [
-                "uv", "run", "main.py", "compare",
+                "hn-local-image", "compare",
                 "--style", style_id,
                 "--target", target,
                 "--output-dir", output_dir,
