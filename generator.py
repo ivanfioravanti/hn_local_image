@@ -4,7 +4,7 @@ import random
 IMAGE_MODELS = {
     "z-image-turbo": {"steps": 9, "guidance": 4.0},
     "flux2-klein-4b": {"steps": 4, "guidance": 1.0},
-    # "flux2-klein-9b": {"steps": 4, "guidance": 1.0},  # Disabled: produces noisy output
+    "flux2-klein-9b": {"steps": 4, "guidance": 1.0},
 }
 
 def generate_local_image(
