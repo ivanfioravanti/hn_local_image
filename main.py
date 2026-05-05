@@ -270,6 +270,10 @@ def _run_compare(styles: list[str], target: str, output_dir: str, model_name: st
                 elapsed = time.time() - t0
                 typer.echo(f"  Saved {img_path} ({elapsed:.1f}s)")
 
+                buf = BytesIO()
+                processed_image.save(buf, format="PNG")
+                display_terminal_preview(buf.getvalue())
+
                 results.append({
                     "model": model_id,
                     "steps": model_config["steps"],
