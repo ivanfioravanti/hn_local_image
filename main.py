@@ -324,7 +324,7 @@ def _run_compare(styles: list[str], target: str, output_dir: str, model_name: st
             buf = BytesIO()
             composite.save(buf, format="PNG")
             typer.echo(f"\n{style_id} comparison:")
-            display_terminal_preview(buf.getvalue(), max_cols=120)
+            display_terminal_preview(buf.getvalue())
         elif len(style_images) == 1:
             buf = BytesIO()
             style_images[0].save(buf, format="PNG")
