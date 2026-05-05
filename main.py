@@ -22,25 +22,26 @@ load_dotenv()
 
 app = typer.Typer(help="hn-local-image: Generates daily AI art from Hacker News headlines.")
 
-def display_terminal_preview(png_bytes: bytes) -> bool:
+def display_terminal_preview(png_bytes: bytes, max_cols: int = 0) -> bool:
     """Displays the image inline for Kitty/Ghostty terminals."""
     term = os.environ.get("TERM", "").lower()
     term_program = os.environ.get("TERM_PROGRAM", "").lower()
-    
+
     if not (term_program in ("ghostty", "kitty") or "kitty" in term or "ghostty" in term):
         return False
-        
+
     if not png_bytes.startswith(b'\x89PNG\r\n\x1a\n'):
         return False
-        
+
     encoded = base64.b64encode(png_bytes).decode('ascii')
-    
+
     # Kitty graphics control payload
     control = "f=100,a=T"
     try:
         columns = os.get_terminal_size().columns
         if columns > 0:
-            control += f",c={max(columns - 2, 1)}"
+            width = min(columns - 2, max_cols) if max_cols > 0 else columns - 2
+            control += f",c={max(width, 1)}"
     except Exception:
         pass
         
@@ -204,13 +205,19 @@ def _run_compare(styles: list[str], target: str, output_dir: str, model_name: st
 
     typer.echo(f"Using target: {target}")
 
-    # 1. Fetch Headlines (once for all styles)
-    typer.echo("Fetching Hacker News front page...")
-    try:
-        titles = fetch_hn_headlines(max_stories=30)
-    except Exception as e:
-        typer.echo(f"Error fetching headlines: {e}", err=True)
-        raise typer.Exit(1)
+    # 1. Fetch Headlines (reuse from parent if available)
+    headlines_path = os.environ.get("_COMPARE_HEADLINES")
+    if headlines_path and Path(headlines_path).exists():
+        typer.echo("Loading shared headlines...")
+        with open(headlines_path) as f:
+            titles = json.load(f)
+    else:
+        typer.echo("Fetching Hacker News front page...")
+        try:
+            titles = fetch_hn_headlines(max_stories=30)
+        except Exception as e:
+            typer.echo(f"Error fetching headlines: {e}", err=True)
+            raise typer.Exit(1)
     typer.echo(f"Found {len(titles)} stories")
 
     # 2. Shared seed for all styles and models
@@ -272,7 +279,7 @@ def _run_compare(styles: list[str], target: str, output_dir: str, model_name: st
 
                 buf = BytesIO()
                 processed_image.save(buf, format="PNG")
-                display_terminal_preview(buf.getvalue())
+                display_terminal_preview(buf.getvalue(), max_cols=80)
 
                 results.append({
                     "model": model_id,
@@ -351,6 +358,11 @@ def compare(
         compare_base = Path(output_dir) / "compare" / timestamp
         compare_base.mkdir(parents=True, exist_ok=True)
 
+        # Write headlines to a temp file so subprocesses reuse them
+        headlines_path = compare_base / "_headlines.json"
+        with open(headlines_path, "w") as f:
+            json.dump(titles, f)
+
         # Run each style in a subprocess
         styles = list(STYLES.keys())
         failed = []
@@ -367,11 +379,15 @@ def compare(
             env = os.environ.copy()
             env["_COMPARE_SEED"] = str(seed)
             env["_COMPARE_TIMESTAMP"] = timestamp
+            env["_COMPARE_HEADLINES"] = str(headlines_path)
 
             result = subprocess.run(cmd, env=env)
             if result.returncode != 0:
                 typer.echo(f"  Style '{style_id}' failed with exit code {result.returncode}", err=True)
                 failed.append(style_id)
+
+        # Clean up temp headlines file
+        headlines_path.unlink(missing_ok=True)
 
         # Build global sidecar from per-style results
         all_results = {}
