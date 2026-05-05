@@ -3,6 +3,9 @@ import os
 import time
 import json
 import base64
+import random
+import subprocess
+import sys
 import requests
 from typing import Optional
 from pathlib import Path
@@ -11,7 +14,7 @@ from dotenv import load_dotenv
 
 from fetcher import fetch_hn_headlines
 from prompter import generate_prompt, STYLES, TARGET_PROFILES
-from generator import generate_local_image
+from generator import generate_local_image, IMAGE_MODELS
 from processor import process_image
 
 # Load base .env first
@@ -60,7 +63,7 @@ def generate(
     output_dir: str = typer.Option(os.environ.get("OUTPUT_DIR", "generated"), help="Directory to save the image"),
     headless: bool = typer.Option(False, "--headless", help="Run without interaction"),
     headless_upload: bool = typer.Option(False, "--headless-upload", help="Generate and upload via WEBHOOK_URL"),
-    model_name: str = typer.Option("mlx-community/Qwen3.5-9B-MLX-8bit", help="Text model for prompt generation"),
+    model_name: str = typer.Option("mlx-community/Qwen3.5-4B-MLX-8bit", help="Text model for prompt generation"),
     image_model: str = typer.Option("z-image-turbo", help="Image model to use (z-image-turbo, flux2-klein-4b, flux2-klein-9b)")
 ):
     if style not in STYLES:
@@ -101,27 +104,20 @@ def generate(
     # MFlux typically expects dimensions to be multiple of 16. 1280x768 is a good 16:9 
     # For eink (800x480), we can just generate at 800x480 as it's a multiple of 16.
     gen_w, gen_h = (800, 480) if target == "eink" else (1280, 768)
-    
-    # Configure Fast settings
-    steps = 9
-    lora_paths = None
-    lora_scales = None
-    guidance = 4.0
-    
-    if image_model in ["flux2-klein-4b", "flux2-klein-9b"]:
-        steps = 4
-        guidance = 1.0
-    
+
+    model_config = IMAGE_MODELS.get(image_model)
+    if not model_config:
+        typer.echo(f"Error: Unknown image model '{image_model}'. Choose from: {list(IMAGE_MODELS.keys())}", err=True)
+        raise typer.Exit(1)
+
     try:
         raw_image = generate_local_image(
-            prompt=img_prompt, 
-            width=gen_w, 
-            height=gen_h, 
+            prompt=img_prompt,
+            width=gen_w,
+            height=gen_h,
             image_model=image_model,
-            steps=steps,
-            lora_paths=lora_paths,
-            lora_scales=lora_scales,
-            guidance=guidance
+            steps=model_config["steps"],
+            guidance=model_config["guidance"],
         )
     except Exception as e:
         typer.echo(f"Error generating image: {e}", err=True)
@@ -199,6 +195,209 @@ def generate(
                     response_body = resp.text if 'resp' in dir() else 'N/A'
                     typer.echo(f"Error uploading image: {e} | Status: {status_code} | Body: {response_body}", err=True)
                     raise typer.Exit(1)
+
+def _run_compare(styles: list[str], target: str, output_dir: str, model_name: str):
+    """Core compare logic shared between single-style and all-styles modes."""
+    if target not in TARGET_PROFILES:
+        typer.echo(f"Error: Unknown target '{target}'. Choose from: {list(TARGET_PROFILES.keys())}", err=True)
+        raise typer.Exit(1)
+
+    typer.echo(f"Using target: {target}")
+
+    # 1. Fetch Headlines (once for all styles)
+    typer.echo("Fetching Hacker News front page...")
+    try:
+        titles = fetch_hn_headlines(max_stories=30)
+    except Exception as e:
+        typer.echo(f"Error fetching headlines: {e}", err=True)
+        raise typer.Exit(1)
+    typer.echo(f"Found {len(titles)} stories")
+
+    # 2. Shared seed for all styles and models
+    seed_str = os.environ.get("_COMPARE_SEED")
+    if seed_str:
+        seed = int(seed_str)
+        typer.echo(f"Using shared seed: {seed}")
+    else:
+        seed = random.randint(0, 2**32 - 1)
+        typer.echo(f"Using seed: {seed}")
+
+    gen_w, gen_h = (800, 480) if target == "eink" else (1280, 768)
+
+    # 3. Output root
+    timestamp = os.environ.get("_COMPARE_TIMESTAMP") or time.strftime("%Y-%m-%d_%H-%M-%S")
+    compare_base = Path(output_dir) / "compare" / timestamp
+
+    # 4. Loop over styles
+    all_results = {}
+    for style_id in styles:
+        typer.echo(f"\n{'='*60}")
+        typer.echo(f"Style: {style_id}")
+        typer.echo(f"{'='*60}")
+
+        typer.echo("Analyzing HN themes with local model...")
+        try:
+            prompt_result = generate_prompt(titles, style_id=style_id, target_id=target, model_name=model_name)
+        except Exception as e:
+            typer.echo(f"Error generating prompt: {e}", err=True)
+            continue
+
+        img_prompt = prompt_result["image_prompt"]
+        typer.echo(f"Image concept: {img_prompt[:120]}...")
+
+        style_dir = compare_base / style_id
+        style_dir.mkdir(parents=True, exist_ok=True)
+
+        # 5. Generate one image per model
+        results = []
+        for model_id, model_config in IMAGE_MODELS.items():
+            typer.echo(f"\nGenerating with {model_id} (steps={model_config['steps']}, guidance={model_config['guidance']})...")
+            t0 = time.time()
+            try:
+                raw_image = generate_local_image(
+                    prompt=img_prompt,
+                    width=gen_w,
+                    height=gen_h,
+                    image_model=model_id,
+                    steps=model_config["steps"],
+                    seed=seed,
+                    guidance=model_config["guidance"],
+                )
+                processed_image = process_image(raw_image, target_mode=target)
+
+                img_path = style_dir / f"{model_id}.png"
+                processed_image.save(img_path)
+                elapsed = time.time() - t0
+                typer.echo(f"  Saved {img_path} ({elapsed:.1f}s)")
+
+                results.append({
+                    "model": model_id,
+                    "steps": model_config["steps"],
+                    "guidance": model_config["guidance"],
+                    "elapsed_seconds": round(elapsed, 1),
+                    "image_path": str(img_path),
+                })
+            except Exception as e:
+                typer.echo(f"  Error with {model_id}: {e}", err=True)
+                results.append({"model": model_id, "error": str(e)})
+
+        all_results[style_id] = {
+            "prompt_details": prompt_result,
+            "models": results,
+        }
+
+        # Save per-style sidecar
+        sidecar = {
+            "generated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "seed": seed,
+            "text_model": model_name,
+            "target_mode": target,
+            "style": style_id,
+            "dimensions": f"{gen_w}x{gen_h}",
+            "prompt_details": prompt_result,
+            "models": results,
+        }
+        with open(style_dir / "comparison.json", "w") as f:
+            json.dump(sidecar, f, indent=2)
+
+    # 6. Save global sidecar with all styles
+    global_sidecar = {
+        "generated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "seed": seed,
+        "text_model": model_name,
+        "target_mode": target,
+        "dimensions": f"{gen_w}x{gen_h}",
+        "headlines": titles,
+        "styles": all_results,
+    }
+    with open(compare_base / "comparison.json", "w") as f:
+        json.dump(global_sidecar, f, indent=2)
+    typer.echo(f"\nComparison complete. Results saved to {compare_base}")
+
+
+@app.command()
+def compare(
+    style: str = typer.Option(os.environ.get("PROMPT_MODE", "editorial"), help="Style to generate: " + ", ".join(STYLES.keys())),
+    target: str = typer.Option(os.environ.get("TARGET_MODE", "web"), help="Output target: " + ", ".join(TARGET_PROFILES.keys())),
+    output_dir: str = typer.Option(os.environ.get("OUTPUT_DIR", "generated"), help="Directory to save images"),
+    model_name: str = typer.Option("mlx-community/Qwen3.5-4B-MLX-8bit", help="Text model for prompt generation"),
+    all_styles: bool = typer.Option(False, "--all-styles", help="Generate all styles in a single run with shared headlines and seed"),
+):
+    """Generate one image per image model using the same prompt and seed for comparison."""
+    if all_styles:
+        # Fetch headlines and seed in the parent process, then spawn a subprocess per style
+        # to avoid GPU memory accumulation across model loads.
+        if target not in TARGET_PROFILES:
+            typer.echo(f"Error: Unknown target '{target}'. Choose from: {list(TARGET_PROFILES.keys())}", err=True)
+            raise typer.Exit(1)
+
+        typer.echo(f"Using target: {target}")
+        typer.echo("Fetching Hacker News front page...")
+        try:
+            titles = fetch_hn_headlines(max_stories=30)
+        except Exception as e:
+            typer.echo(f"Error fetching headlines: {e}", err=True)
+            raise typer.Exit(1)
+        typer.echo(f"Found {len(titles)} stories")
+
+        seed = random.randint(0, 2**32 - 1)
+        typer.echo(f"Using shared seed: {seed}")
+
+        timestamp = time.strftime("%Y-%m-%d_%H-%M-%S")
+        compare_base = Path(output_dir) / "compare" / timestamp
+        compare_base.mkdir(parents=True, exist_ok=True)
+
+        # Run each style in a subprocess
+        styles = list(STYLES.keys())
+        failed = []
+        for i, style_id in enumerate(styles):
+            typer.echo(f"\n[{i+1}/{len(styles)}] Style: {style_id}")
+            cmd = [
+                "uv", "run", "main.py", "compare",
+                "--style", style_id,
+                "--target", target,
+                "--output-dir", output_dir,
+                "--model-name", model_name,
+            ]
+            # Pass shared data via environment
+            env = os.environ.copy()
+            env["_COMPARE_SEED"] = str(seed)
+            env["_COMPARE_TIMESTAMP"] = timestamp
+
+            result = subprocess.run(cmd, env=env)
+            if result.returncode != 0:
+                typer.echo(f"  Style '{style_id}' failed with exit code {result.returncode}", err=True)
+                failed.append(style_id)
+
+        # Build global sidecar from per-style results
+        all_results = {}
+        for style_id in styles:
+            sidecar_path = compare_base / style_id / "comparison.json"
+            if sidecar_path.exists():
+                with open(sidecar_path) as f:
+                    all_results[style_id] = json.load(f)
+
+        global_sidecar = {
+            "generated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "seed": seed,
+            "text_model": model_name,
+            "target_mode": target,
+            "headlines": titles,
+            "styles": all_results,
+            "failed": failed,
+        }
+        with open(compare_base / "comparison.json", "w") as f:
+            json.dump(global_sidecar, f, indent=2)
+
+        typer.echo(f"\nComparison complete. Results saved to {compare_base}")
+        if failed:
+            typer.echo(f"Failed styles: {failed}", err=True)
+
+    elif style in STYLES:
+        _run_compare(styles=[style], target=target, output_dir=output_dir, model_name=model_name)
+    else:
+        typer.echo(f"Error: Unknown style '{style}'. Choose from: {list(STYLES.keys())}", err=True)
+        raise typer.Exit(1)
 
 if __name__ == "__main__":
     app()

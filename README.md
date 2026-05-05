@@ -14,7 +14,7 @@ This project was heavily inspired by and built upon the concepts of two fantasti
 ## Features
 
 *   **100% Local Inference:** Uses MLX to run both the text model (for prompt analysis) and the image model (for generation) directly on your Mac.
-*   **Multiple Image Models:** Supports fast models like `z-image-turbo` (default) and newer, highly capable FLUX.2 models like `flux2-klein-4b` and `flux2-klein-9b`.
+*   **Multiple Image Models:** Supports fast models like `z-image-turbo` (default) and the FLUX.2 Klein 4B model. Note: `flux2-klein-9b` is currently disabled due to noisy output issues.
 *   **Multiple Styles:** Choose from various artistic directions (e.g., `editorial`, `story_scene`, `story_blueprint`, `story_desk`, `story_frontpage`, `original`).
 *   **Target Profiles:** Output full-color, high-resolution PNGs for the `web`, or heavily processed, dithered 1-bit monochrome images optimized for `eink` displays.
 *   **Terminal Preview:** Automatically previews the generated image directly in your terminal if you are using Kitty or Ghostty.
@@ -84,7 +84,7 @@ uv run main.py --model-name "mlx-community/Llama-3.2-8B-Instruct-4bit"
 *   `--style`: The artistic style to use (e.g., `editorial`, `story_scene`, `story_blueprint`, `story_desk`, `story_frontpage`, `original`). Default is `editorial`.
 *   `--target`: The output processing mode (`web` or `eink`). Default is `web`.
 *   `--image-model`: The image generation model to use (`z-image-turbo`, `flux2-klein-4b`, or `flux2-klein-9b`). Default is `z-image-turbo`.
-*   `--model-name`: The Hugging Face repo ID of the MLX text model to use for prompt generation. Default is `mlx-community/Qwen3.5-9B-MLX-8bit`.
+*   `--model-name`: The Hugging Face repo ID of the MLX text model to use for prompt generation. Default is `mlx-community/Qwen3.5-4B-MLX-8bit`.
 *   `--output-dir`: Directory to save the generated images and JSON sidecars. Default is `generated/`.
 *   `--headless`: Run without interaction.
 *   `--headless-upload`: Automatically upload the generated image as a binary payload to a URL. Requires configuring the `WEBHOOK_URL` variable in a `.env` or `.env.example` file.
@@ -103,6 +103,30 @@ TARGET_MODE=eink              # Equivalent to --target
 OUTPUT_DIR=generated          # Equivalent to --output-dir
 HN_URL=https://news.ycombinator.com/ # Override the default HN url
 ```
+
+## Comparing Image Models
+
+The `compare` command generates images with all available image models using the same prompt and seed, making it easy to compare quality and speed side by side.
+
+**Compare a single style:**
+```bash
+uv run main.py compare --style editorial
+```
+
+**Compare all styles in one run (shared headlines and seed):**
+```bash
+uv run main.py compare --all-styles
+```
+
+**Compare with e-ink target:**
+```bash
+uv run main.py compare --all-styles --target eink
+```
+
+This produces a `generated/compare/<timestamp>/` directory with one subfolder per style, each containing:
+- One `.png` per image model (`z-image-turbo.png`, `flux2-klein-4b.png`, `flux2-klein-9b.png`)
+- A `comparison.json` sidecar with prompt details, seed, and per-model timing
+- A root `comparison.json` aggregating all styles (when using `--all-styles`)
 
 ## Webhooks / Headless Uploads
 
