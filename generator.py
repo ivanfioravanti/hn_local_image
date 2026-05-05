@@ -1,5 +1,6 @@
 from PIL import Image
 import random
+import gc
 
 IMAGE_MODELS = {
     "z-image-turbo": {"steps": 9, "guidance": 4.0},
@@ -51,8 +52,12 @@ def generate_local_image(
         height=height,
         guidance=guidance,
     )
-    
-    return image.image
+
+    result = image.image
+    del model
+    gc.collect()
+
+    return result
 
 if __name__ == "__main__":
     prompt = "In a futuristic city skyline, a Mac mini stands at the center, symbolizing the core of innovation."
