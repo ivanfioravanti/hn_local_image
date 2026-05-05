@@ -309,7 +309,7 @@ def _run_compare(styles: list[str], target: str, output_dir: str, model_name: st
         # Show side-by-side preview
         if len(style_images) > 1:
             labels = list(IMAGE_MODELS.keys())
-            thumb_h = 640
+            thumb_h = 900
             thumbs = []
             for img, label in zip(style_images, labels):
                 ratio = thumb_h / img.height
