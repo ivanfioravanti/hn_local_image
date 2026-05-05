@@ -7,6 +7,7 @@ import random
 import subprocess
 import sys
 import requests
+from PIL import Image
 from typing import Optional
 from pathlib import Path
 from io import BytesIO
@@ -257,6 +258,7 @@ def _run_compare(styles: list[str], target: str, output_dir: str, model_name: st
 
         # 5. Generate one image per model
         results = []
+        style_images = []
         for model_id, model_config in IMAGE_MODELS.items():
             typer.echo(f"\nGenerating with {model_id} (steps={model_config['steps']}, guidance={model_config['guidance']})...")
             t0 = time.time()
@@ -277,10 +279,7 @@ def _run_compare(styles: list[str], target: str, output_dir: str, model_name: st
                 elapsed = time.time() - t0
                 typer.echo(f"  Saved {img_path} ({elapsed:.1f}s)")
 
-                buf = BytesIO()
-                processed_image.save(buf, format="PNG")
-                display_terminal_preview(buf.getvalue(), max_cols=80)
-
+                style_images.append(processed_image)
                 results.append({
                     "model": model_id,
                     "steps": model_config["steps"],
@@ -291,6 +290,30 @@ def _run_compare(styles: list[str], target: str, output_dir: str, model_name: st
             except Exception as e:
                 typer.echo(f"  Error with {model_id}: {e}", err=True)
                 results.append({"model": model_id, "error": str(e)})
+
+        # Show side-by-side preview
+        if len(style_images) > 1:
+            labels = list(IMAGE_MODELS.keys())
+            thumb_h = 384
+            thumbs = []
+            for img, label in zip(style_images, labels):
+                ratio = thumb_h / img.height
+                thumb_w = int(img.width * ratio)
+                thumbs.append(img.resize((thumb_w, thumb_h), Image.Resampling.LANCZOS))
+            composite_w = sum(t.width for t in thumbs) + 20 * (len(thumbs) - 1)
+            composite = Image.new("RGB", (composite_w, thumb_h), (30, 30, 30))
+            x = 0
+            for thumb in thumbs:
+                composite.paste(thumb, (x, 0))
+                x += thumb.width + 20
+            buf = BytesIO()
+            composite.save(buf, format="PNG")
+            typer.echo(f"\n{style_id} comparison:")
+            display_terminal_preview(buf.getvalue(), max_cols=120)
+        elif len(style_images) == 1:
+            buf = BytesIO()
+            style_images[0].save(buf, format="PNG")
+            display_terminal_preview(buf.getvalue(), max_cols=80)
 
         all_results[style_id] = {
             "prompt_details": prompt_result,
