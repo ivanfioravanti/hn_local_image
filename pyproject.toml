@@ -5,17 +5,21 @@ description = "Generates daily AI art from Hacker News headlines using local App
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
-    "beautifulsoup4>=4.14.3",
-    "mflux>=0.17.4",
-    "mlx-lm>=0.31.1",
+    "beautifulsoup4>=4.15.0",
+    "mflux>=0.18.0",
+    "mlx-lm>=0.31.3",
     "pillow>=12.2.0",
     "python-dotenv>=1.2.2",
-    "requests>=2.33.1",
-    "typer>=0.24.1",
+    "requests>=2.34.2",
+    "typer>=0.26.7",
 ]
 
 [project.scripts]
 hn-local-image = "main:app"
+
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
 py-modules = ["main", "fetcher", "prompter", "generator", "processor"]
