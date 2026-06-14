@@ -21,9 +21,9 @@ This project was heavily inspired by and built upon the concepts of two fantasti
 
 ## Styles Gallery
 
-The following examples demonstrate the different artistic styles available, generated using current Hacker News headlines.
+All of the examples below are generated with `--target eink`: a 1-bit, dithered 800×480 monochrome image optimized for e-ink displays.
 
-| Style | Example |
+| Style | E-ink Example |
 | :--- | :--- |
 | **Editorial**<br>`--style editorial` | ![Editorial Style](docs/images/editorial.png) |
 | **Story Scene**<br>`--style story_scene` | ![Story Scene Style](docs/images/story_scene.png) |
@@ -31,6 +31,19 @@ The following examples demonstrate the different artistic styles available, gene
 | **Story Desk**<br>`--style story_desk` | ![Story Desk Style](docs/images/story_desk.png) |
 | **Story Frontpage**<br>`--style story_frontpage` | ![Story Frontpage Style](docs/images/story_frontpage.png) |
 | **Original**<br>`--style original` | ![Original Style](docs/images/original.png) |
+
+## High-Resolution Color Output
+
+The default target is `web`, which produces full-color, high-resolution 1280×768 PNGs. The same six styles, generated with the default `z-image-turbo` model:
+
+| Style | Color Example |
+| :--- | :--- |
+| **Editorial**<br>`--style editorial` | ![Editorial Color](docs/images/editorial_color.png) |
+| **Story Scene**<br>`--style story_scene` | ![Story Scene Color](docs/images/story_scene_color.png) |
+| **Story Blueprint**<br>`--style story_blueprint` | ![Story Blueprint Color](docs/images/story_blueprint_color.png) |
+| **Story Desk**<br>`--style story_desk` | ![Story Desk Color](docs/images/story_desk_color.png) |
+| **Story Frontpage**<br>`--style story_frontpage` | ![Story Frontpage Color](docs/images/story_frontpage_color.png) |
+| **Original**<br>`--style original` | ![Original Color](docs/images/original_color.png) |
 
 ## Requirements
 
