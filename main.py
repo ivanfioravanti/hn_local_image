@@ -5,6 +5,7 @@ import time
 import json
 import base64
 import random
+import re
 import subprocess
 import sys
 import shutil
@@ -43,6 +44,13 @@ app = typer.Typer(help=f"hn-local-image {__version__}: Generates daily AI art fr
 
 SKILL_NAME = "hn-local-image"
 AVAILABLE_IMAGE_MODELS = ", ".join(IMAGE_MODELS.keys())
+RECOMMENDED_AVAILABLE_MEMORY_GB = {
+    "z-image-turbo": 8,
+    "flux2-klein-4b": 10,
+    "flux2-klein-9b": 14,
+    "ernie-image-turbo": 14,
+    "ideogram-4-fp8": 24,
+}
 
 def version_callback(value: bool):
     if value:
@@ -65,6 +73,85 @@ def describe_image_model_config(model_config: dict) -> str:
     if "preset" in model_config:
         return f"preset={model_config['preset']}"
     return f"steps={model_config['steps']}, guidance={model_config['guidance']}"
+
+def bytes_to_gb(byte_count: int) -> float:
+    return byte_count / (1024**3)
+
+def parse_vm_stat_pages(vm_stat_output: str) -> tuple[int, dict[str, int]]:
+    page_size = 4096
+    page_size_match = re.search(r"page size of (\d+) bytes", vm_stat_output)
+    if page_size_match:
+        page_size = int(page_size_match.group(1))
+
+    pages = {}
+    for line in vm_stat_output.splitlines():
+        if ":" not in line:
+            continue
+        key, raw_value = line.split(":", 1)
+        cleaned = raw_value.strip().rstrip(".").replace(",", "")
+        if cleaned.isdigit():
+            pages[key] = int(cleaned)
+    return page_size, pages
+
+def get_memory_info() -> dict[str, float] | None:
+    if sys.platform == "darwin":
+        try:
+            total_bytes = int(subprocess.check_output(["sysctl", "-n", "hw.memsize"], text=True).strip())
+            vm_stat_output = subprocess.check_output(["vm_stat"], text=True)
+        except Exception:
+            return None
+
+        page_size, pages = parse_vm_stat_pages(vm_stat_output)
+        available_pages = (
+            pages.get("Pages free", 0)
+            + pages.get("Pages inactive", 0)
+            + pages.get("Pages speculative", 0)
+            + pages.get("Pages purgeable", 0)
+        )
+        return {
+            "total_gb": bytes_to_gb(total_bytes),
+            "available_gb": bytes_to_gb(available_pages * page_size),
+        }
+
+    meminfo_path = Path("/proc/meminfo")
+    if meminfo_path.exists():
+        try:
+            meminfo = {}
+            for line in meminfo_path.read_text().splitlines():
+                key, raw_value = line.split(":", 1)
+                meminfo[key] = int(raw_value.strip().split()[0]) * 1024
+            total_bytes = meminfo.get("MemTotal")
+            available_bytes = meminfo.get("MemAvailable")
+            if total_bytes and available_bytes:
+                return {
+                    "total_gb": bytes_to_gb(total_bytes),
+                    "available_gb": bytes_to_gb(available_bytes),
+                }
+        except Exception:
+            return None
+
+    return None
+
+def check_memory_before_generation(model_id: str):
+    gc.collect()
+    memory_info = get_memory_info()
+    recommended_gb = RECOMMENDED_AVAILABLE_MEMORY_GB.get(model_id, 8)
+    if memory_info is None:
+        typer.echo("Memory check: unable to determine available system memory.", err=True)
+        return
+
+    available_gb = memory_info["available_gb"]
+    total_gb = memory_info["total_gb"]
+    typer.echo(
+        f"Memory check: {available_gb:.1f} GB available / {total_gb:.1f} GB total "
+        f"(recommended for {model_id}: {recommended_gb} GB)."
+    )
+    if available_gb < recommended_gb:
+        typer.echo(
+            f"Warning: {model_id} may need more available unified memory; "
+            "close other GPU or memory-heavy apps if generation fails.",
+            err=True,
+        )
 
 def image_model_label(model_id: str) -> str:
     labels = {
@@ -350,6 +437,7 @@ def generate(
         typer.echo(f"Error: Unknown image model '{image_model}'. Choose from: {list(IMAGE_MODELS.keys())}", err=True)
         raise typer.Exit(1)
 
+    check_memory_before_generation(image_model)
     try:
         raw_image = generate_local_image(
             prompt=img_prompt,
@@ -535,6 +623,7 @@ def _run_compare(
         for model_id in selected_image_models:
             model_config = IMAGE_MODELS[model_id]
             typer.echo(f"\nGenerating with {model_id} ({describe_image_model_config(model_config)})...")
+            check_memory_before_generation(model_id)
             t0 = time.time()
             try:
                 raw_image = generate_local_image(

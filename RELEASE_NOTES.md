@@ -1,5 +1,15 @@
 # Release Notes
 
+## [0.3.2] - 2026-06-15
+
+### Memory Preflight Checks
+
+**Changes:**
+- **Generation Memory Check:** Before loading each image model, the CLI now
+  prints available system memory and a model-specific recommendation.
+- **Ideogram Warning:** `ideogram-4-fp8` receives the highest advisory memory
+  recommendation because it is the most memory-intensive model.
+
 ## [0.3.1] - 2026-06-15
 
 ### Faster Ideogram Default and Stacked Compare Grid

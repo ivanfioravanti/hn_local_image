@@ -180,6 +180,10 @@ uv run main.py --model-name "mlx-community/Llama-3.2-8B-Instruct-4bit"
 *   `--headless`: Run without interaction.
 *   `--headless-upload`: Automatically upload the generated image as a binary payload to a URL. Requires configuring the `WEBHOOK_URL` variable in a `.env` or `.env.example` file.
 
+Before each image model loads, the CLI prints available system memory and a
+model-specific recommendation. This is advisory; Ideogram 4 FP8 has the highest
+memory demand.
+
 ## Environment Variables
 
 You can configure the application's default behavior without passing CLI flags by setting the following environment variables in a `.env` file in the project root:
