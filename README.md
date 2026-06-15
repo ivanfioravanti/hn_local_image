@@ -4,6 +4,10 @@ Generates a daily AI art piece based on the top stories currently on Hacker News
 
 This is a local-first reimagining of the original concept, allowing you to generate "front page" artwork without relying on external cloud APIs (except for fetching the headlines themselves).
 
+## Releases
+
+See [RELEASE_NOTES.md](RELEASE_NOTES.md) for version history and detailed release information.
+
 ## Inspiration & Credits
 
 This project was heavily inspired by and built upon the concepts of three fantastic projects:
@@ -67,22 +71,51 @@ The default target is `web`, which produces full-color, high-resolution 1280×76
 
 *   An Apple Silicon Mac (M1/M2/M3/M4)
 *   Python 3.12+
-*   [`uv`](https://github.com/astral-sh/uv) (The fast Python package installer and resolver)
 
 ## Installation
+
+### Recommended: Install via PyPI with uv
+
+[uv](https://github.com/astral-sh/uv) is the fastest Python package installer and highly recommended for running this tool.
+
+**Run directly without installing:**
+```bash
+uvx hn-local-image
+```
+
+**Install for persistent use:**
+```bash
+uv tool install hn-local-image
+hn-local-image
+```
+
+### Alternative: Install from source
 
 Clone the repository and run the application using `uv`:
 
 ```bash
-git clone https://github.com/yourusername/hn_local_image.git
+git clone https://github.com/ivanfioravanti/hn_local_image.git
 cd hn_local_image
 ```
 
 `uv run` will automatically manage the virtual environment and dependencies for you.
 
+### Alternative: Install with pip
+
+```bash
+pip install hn-local-image
+hn-local-image
+```
+
 ## Usage
 
-Run the main CLI script:
+If installed via PyPI, run the command directly:
+
+```bash
+hn-local-image [OPTIONS]
+```
+
+If running from source, use `uv run`:
 
 ```bash
 uv run main.py [OPTIONS]
