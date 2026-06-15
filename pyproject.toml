@@ -1,6 +1,6 @@
 [project]
 name = "hn-local-image"
-version = "0.2.1"
+version = "0.2.2"
 description = "Generates daily AI art from Hacker News headlines using local Apple Silicon"
 readme = "README.md"
 requires-python = ">=3.12"
