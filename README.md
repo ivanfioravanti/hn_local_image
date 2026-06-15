@@ -107,6 +107,28 @@ pip install hn-local-image
 hn-local-image
 ```
 
+### Optional: Install the Codex agent skill
+
+This repository includes a Codex skill that teaches agents how to use the
+published `hn-local-image` package. To make it available in Codex, copy it into
+your skills directory:
+
+```bash
+mkdir -p "${CODEX_HOME:-$HOME/.codex}/skills"
+cp -R skills/hn-local-image "${CODEX_HOME:-$HOME/.codex}/skills/"
+```
+
+For local skill development, symlink it instead so changes in this repo are
+picked up immediately:
+
+```bash
+mkdir -p "${CODEX_HOME:-$HOME/.codex}/skills"
+ln -sfn "$(pwd)/skills/hn-local-image" "${CODEX_HOME:-$HOME/.codex}/skills/hn-local-image"
+```
+
+After installing, ask Codex to use `$hn-local-image` for Hacker News headline
+artwork, e-ink output, model comparisons, or headless upload automation.
+
 ## Usage
 
 If installed via PyPI, run the command directly:

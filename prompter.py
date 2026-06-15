@@ -1,6 +1,8 @@
 import json
 import re
+from contextlib import contextmanager
 from typing import Any
+import mlx.nn as nn
 import mlx_vlm
 from mlx_vlm import load, generate
 
@@ -64,6 +66,29 @@ def extract_json(text: str) -> dict[str, Any]:
             pass
     return {}
 
+@contextmanager
+def non_strict_mlx_weight_loading():
+    original_load_weights = nn.Module.load_weights
+
+    def load_weights_non_strict(self, file_or_weights, strict=True):
+        return original_load_weights(self, file_or_weights, strict=False)
+
+    nn.Module.load_weights = load_weights_non_strict
+    try:
+        yield
+    finally:
+        nn.Module.load_weights = original_load_weights
+
+def load_text_model(model_name: str):
+    try:
+        return load(model_name)
+    except ValueError as e:
+        if "parameters not in model" not in str(e):
+            raise
+        print("Retrying text model load with non-strict weight matching...")
+        with non_strict_mlx_weight_loading():
+            return load(model_name)
+
 def generate_prompt(
     titles: list[str], 
     style_id: str = "editorial", 
@@ -86,7 +111,7 @@ def generate_prompt(
     user_prompt = style["user"].format(headlines=headlines_text, frame=target["description"], direction=target["direction"])
     
     print(f"Loading text model {model_name}...")
-    model, tokenizer = load(model_name)
+    model, tokenizer = load_text_model(model_name)
     
     messages = [
         {"role": "system", "content": system_prompt},
