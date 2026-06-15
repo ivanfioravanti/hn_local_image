@@ -15,7 +15,7 @@ dependencies = [
 ]
 
 [project.scripts]
-hn-local-image = "main:app"
+hn-local-image = "main:run"
 
 [build-system]
 requires = ["setuptools>=61"]

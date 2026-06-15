@@ -8,11 +8,14 @@ import random
 import subprocess
 import sys
 import requests
+import tomllib
+import typer._click.exceptions as click_exceptions
 from PIL import Image
 from typing import Optional
 from pathlib import Path
 from io import BytesIO
 from dotenv import load_dotenv
+from importlib.metadata import PackageNotFoundError, version as package_version
 
 from fetcher import fetch_hn_headlines
 from prompter import generate_prompt, STYLES, TARGET_PROFILES
@@ -22,7 +25,38 @@ from processor import process_image, add_watermark
 # Load base .env first
 load_dotenv()
 
-app = typer.Typer(help="hn-local-image: Generates daily AI art from Hacker News headlines.")
+def get_package_version() -> str:
+    try:
+        return package_version("hn-local-image")
+    except PackageNotFoundError:
+        try:
+            with open(Path(__file__).with_name("pyproject.toml"), "rb") as file:
+                return tomllib.load(file)["project"]["version"]
+        except Exception:
+            return "unknown"
+
+__version__ = get_package_version()
+
+app = typer.Typer(help=f"hn-local-image {__version__}: Generates daily AI art from Hacker News headlines.")
+
+AVAILABLE_IMAGE_MODELS = ", ".join(IMAGE_MODELS.keys())
+
+def version_callback(value: bool):
+    if value:
+        typer.echo(f"hn-local-image {__version__}")
+        raise typer.Exit()
+
+@app.callback()
+def main(
+    version: Optional[bool] = typer.Option(
+        None,
+        "--version",
+        callback=version_callback,
+        is_eager=True,
+        help="Show version and exit.",
+    )
+):
+    pass
 
 def describe_image_model_config(model_config: dict) -> str:
     if "preset" in model_config:
@@ -72,7 +106,7 @@ def generate(
     headless: bool = typer.Option(False, "--headless", help="Run without interaction"),
     headless_upload: bool = typer.Option(False, "--headless-upload", help="Generate and upload via WEBHOOK_URL"),
     model_name: str = typer.Option("mlx-community/gemma-4-e4b-it-8bit", help="Text model for prompt generation"),
-    image_model: str = typer.Option("z-image-turbo", help="Image model to use: " + ", ".join(IMAGE_MODELS.keys())),
+    image_model: str = typer.Option("z-image-turbo", help="Image model to use: " + AVAILABLE_IMAGE_MODELS),
     watermark: bool = typer.Option(False, "--watermark", help="Add model name watermark to image")
 ):
     if style not in STYLES:
@@ -518,5 +552,30 @@ def compare(
         typer.echo(f"Error: Unknown style '{style}'. Choose from: {list(STYLES.keys())}", err=True)
         raise typer.Exit(1)
 
+def run():
+    try:
+        app(standalone_mode=False)
+    except click_exceptions.BadOptionUsage as e:
+        option_name = getattr(e, "option_name", None)
+        if option_name == "--image-model":
+            typer.echo("Error: Option '--image-model' requires an argument.", err=True)
+            typer.echo(f"Available image models: {AVAILABLE_IMAGE_MODELS}", err=True)
+            raise SystemExit(2)
+        e.show()
+        raise SystemExit(e.exit_code)
+    except click_exceptions.MissingParameter as e:
+        param_name = getattr(e.param, "name", None)
+        if param_name == "image_model":
+            typer.echo("Error: Option '--image-model' requires an argument.", err=True)
+            typer.echo(f"Available image models: {AVAILABLE_IMAGE_MODELS}", err=True)
+            raise SystemExit(2)
+        e.show()
+        raise SystemExit(e.exit_code)
+    except click_exceptions.Exit as e:
+        raise SystemExit(e.exit_code)
+    except click_exceptions.ClickException as e:
+        e.show()
+        raise SystemExit(e.exit_code)
+
 if __name__ == "__main__":
-    app()
+    run()
