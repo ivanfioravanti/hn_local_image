@@ -17,12 +17,17 @@ from dotenv import load_dotenv
 from fetcher import fetch_hn_headlines
 from prompter import generate_prompt, STYLES, TARGET_PROFILES
 from generator import generate_local_image, IMAGE_MODELS
-from processor import process_image
+from processor import process_image, add_watermark
 
 # Load base .env first
 load_dotenv()
 
 app = typer.Typer(help="hn-local-image: Generates daily AI art from Hacker News headlines.")
+
+def describe_image_model_config(model_config: dict) -> str:
+    if "preset" in model_config:
+        return f"preset={model_config['preset']}"
+    return f"steps={model_config['steps']}, guidance={model_config['guidance']}"
 
 def display_terminal_preview(png_bytes: bytes, max_cols: int = 0) -> bool:
     """Displays the image inline for Kitty/Ghostty terminals."""
@@ -67,7 +72,8 @@ def generate(
     headless: bool = typer.Option(False, "--headless", help="Run without interaction"),
     headless_upload: bool = typer.Option(False, "--headless-upload", help="Generate and upload via WEBHOOK_URL"),
     model_name: str = typer.Option("mlx-community/gemma-4-e4b-it-8bit", help="Text model for prompt generation"),
-    image_model: str = typer.Option("z-image-turbo", help="Image model to use (z-image-turbo, flux2-klein-4b, flux2-klein-9b)")
+    image_model: str = typer.Option("z-image-turbo", help="Image model to use: " + ", ".join(IMAGE_MODELS.keys())),
+    watermark: bool = typer.Option(False, "--watermark", help="Add model name watermark to image")
 ):
     if style not in STYLES:
         typer.echo(f"Error: Unknown style '{style}'. Choose from: {list(STYLES.keys())}", err=True)
@@ -119,8 +125,9 @@ def generate(
             width=gen_w,
             height=gen_h,
             image_model=image_model,
-            steps=model_config["steps"],
-            guidance=model_config["guidance"],
+            steps=model_config.get("steps", 9),
+            guidance=model_config.get("guidance", 4.0),
+            preset=model_config.get("preset"),
         )
     except Exception as e:
         typer.echo(f"Error generating image: {e}", err=True)
@@ -129,7 +136,11 @@ def generate(
     # 4. Processing
     typer.echo(f"Processing image for {target}...")
     processed_image = process_image(raw_image, target_mode=target)
-    
+
+    # Add watermark if requested
+    if watermark:
+        processed_image = add_watermark(processed_image, image_model)
+
     # 5. Output
     out_dir = Path(output_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -149,6 +160,7 @@ def generate(
         "image_path": str(img_path),
         "text_model": model_name,
         "image_model": image_model,
+        "image_model_config": model_config,
         "target_mode": target,
         "prompt_details": prompt_result
     }
@@ -199,13 +211,30 @@ def generate(
                     typer.echo(f"Error uploading image: {e} | Status: {status_code} | Body: {response_body}", err=True)
                     raise typer.Exit(1)
 
-def _run_compare(styles: list[str], target: str, output_dir: str, model_name: str):
+def _validate_image_models(image_models: list[str] | None) -> list[str]:
+    selected = image_models or list(IMAGE_MODELS.keys())
+    unknown = [model for model in selected if model not in IMAGE_MODELS]
+    if unknown:
+        typer.echo(f"Error: Unknown image model(s) {unknown}. Choose from: {list(IMAGE_MODELS.keys())}", err=True)
+        raise typer.Exit(1)
+    return selected
+
+def _run_compare(
+    styles: list[str],
+    target: str,
+    output_dir: str,
+    model_name: str,
+    image_models: list[str] | None = None,
+    watermark: bool = False,
+):
     """Core compare logic shared between single-style and all-styles modes."""
     if target not in TARGET_PROFILES:
         typer.echo(f"Error: Unknown target '{target}'. Choose from: {list(TARGET_PROFILES.keys())}", err=True)
         raise typer.Exit(1)
 
     typer.echo(f"Using target: {target}")
+    selected_image_models = _validate_image_models(image_models)
+    typer.echo(f"Comparing image models: {', '.join(selected_image_models)}")
 
     # 1. Fetch Headlines (reuse from parent if available)
     headlines_path = os.environ.get("_COMPARE_HEADLINES")
@@ -271,8 +300,9 @@ def _run_compare(styles: list[str], target: str, output_dir: str, model_name: st
 
         results = []
         style_images = []
-        for model_id, model_config in IMAGE_MODELS.items():
-            typer.echo(f"\nGenerating with {model_id} (steps={model_config['steps']}, guidance={model_config['guidance']})...")
+        for model_id in selected_image_models:
+            model_config = IMAGE_MODELS[model_id]
+            typer.echo(f"\nGenerating with {model_id} ({describe_image_model_config(model_config)})...")
             t0 = time.time()
             try:
                 raw_image = generate_local_image(
@@ -280,11 +310,16 @@ def _run_compare(styles: list[str], target: str, output_dir: str, model_name: st
                     width=gen_w,
                     height=gen_h,
                     image_model=model_id,
-                    steps=model_config["steps"],
+                    steps=model_config.get("steps", 9),
                     seed=seed,
-                    guidance=model_config["guidance"],
+                    guidance=model_config.get("guidance", 4.0),
+                    preset=model_config.get("preset"),
                 )
                 processed_image = process_image(raw_image, target_mode=target)
+
+                # Add watermark if requested
+                if watermark:
+                    processed_image = add_watermark(processed_image, model_id)
 
                 img_path = style_dir / f"{model_id}.png"
                 processed_image.save(img_path)
@@ -294,8 +329,7 @@ def _run_compare(styles: list[str], target: str, output_dir: str, model_name: st
                 style_images.append(processed_image)
                 results.append({
                     "model": model_id,
-                    "steps": model_config["steps"],
-                    "guidance": model_config["guidance"],
+                    "config": model_config,
                     "elapsed_seconds": round(elapsed, 1),
                     "image_path": str(img_path),
                 })
@@ -341,6 +375,7 @@ def _run_compare(styles: list[str], target: str, output_dir: str, model_name: st
             "seed": seed,
             "text_model": model_name,
             "target_mode": target,
+            "image_models": selected_image_models,
             "style": style_id,
             "dimensions": f"{gen_w}x{gen_h}",
             "prompt_details": prompt_result,
@@ -355,6 +390,7 @@ def _run_compare(styles: list[str], target: str, output_dir: str, model_name: st
         "seed": seed,
         "text_model": model_name,
         "target_mode": target,
+        "image_models": selected_image_models,
         "dimensions": f"{gen_w}x{gen_h}",
         "headlines": titles,
         "styles": all_results,
@@ -369,8 +405,19 @@ def compare(
     style: str = typer.Option(os.environ.get("PROMPT_MODE", "editorial"), help="Style to generate: " + ", ".join(STYLES.keys())),
     target: str = typer.Option(os.environ.get("TARGET_MODE", "web"), help="Output target: " + ", ".join(TARGET_PROFILES.keys())),
     output_dir: str = typer.Option(os.environ.get("OUTPUT_DIR", "generated"), help="Directory to save images"),
-    model_name: str = typer.Option("mlx-community/gemma-4-e4b-it-8bit", help="Text model for prompt generation"),
+    text_model: str = typer.Option(
+        "mlx-community/gemma-4-e4b-it-8bit",
+        "--text-model",
+        "--model-name",
+        help="Text model for prompt generation",
+    ),
+    image_model: Optional[list[str]] = typer.Option(
+        None,
+        "--image-model",
+        help="Image model to compare. Repeat to compare a subset.",
+    ),
     all_styles: bool = typer.Option(False, "--all-styles", help="Generate all styles in a single run with shared headlines and seed"),
+    watermark: bool = typer.Option(False, "--watermark", help="Add model name watermark to images")
 ):
     """Generate one image per image model using the same prompt and seed for comparison."""
     if all_styles:
@@ -379,8 +426,10 @@ def compare(
         if target not in TARGET_PROFILES:
             typer.echo(f"Error: Unknown target '{target}'. Choose from: {list(TARGET_PROFILES.keys())}", err=True)
             raise typer.Exit(1)
+        selected_image_models = _validate_image_models(image_model)
 
         typer.echo(f"Using target: {target}")
+        typer.echo(f"Comparing image models: {', '.join(selected_image_models)}")
         typer.echo("Fetching Hacker News front page...")
         try:
             titles = fetch_hn_headlines(max_stories=30)
@@ -411,8 +460,12 @@ def compare(
                 "--style", style_id,
                 "--target", target,
                 "--output-dir", output_dir,
-                "--model-name", model_name,
+                "--text-model", text_model,
             ]
+            for model_id in selected_image_models:
+                cmd.extend(["--image-model", model_id])
+            if watermark:
+                cmd.append("--watermark")
             # Pass shared data via environment
             env = os.environ.copy()
             env["_COMPARE_SEED"] = str(seed)
@@ -438,8 +491,9 @@ def compare(
         global_sidecar = {
             "generated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ"),
             "seed": seed,
-            "text_model": model_name,
+            "text_model": text_model,
             "target_mode": target,
+            "image_models": selected_image_models,
             "headlines": titles,
             "styles": all_results,
             "failed": failed,
@@ -452,7 +506,14 @@ def compare(
             typer.echo(f"Failed styles: {failed}", err=True)
 
     elif style in STYLES:
-        _run_compare(styles=[style], target=target, output_dir=output_dir, model_name=model_name)
+        _run_compare(
+            styles=[style],
+            target=target,
+            output_dir=output_dir,
+            model_name=text_model,
+            image_models=image_model,
+            watermark=watermark,
+        )
     else:
         typer.echo(f"Error: Unknown style '{style}'. Choose from: {list(STYLES.keys())}", err=True)
         raise typer.Exit(1)
