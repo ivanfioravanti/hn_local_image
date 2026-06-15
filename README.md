@@ -110,20 +110,24 @@ hn-local-image
 ### Optional: Install the Codex agent skill
 
 This repository includes a Codex skill that teaches agents how to use the
-published `hn-local-image` package. To make it available in Codex, copy it into
-your skills directory:
+published `hn-local-image` package. To make it available in Codex from the
+published package, run:
 
 ```bash
-mkdir -p "${CODEX_HOME:-$HOME/.codex}/skills"
-cp -R skills/hn-local-image "${CODEX_HOME:-$HOME/.codex}/skills/"
+uvx hn-local-image install-skill
 ```
 
-For local skill development, symlink it instead so changes in this repo are
-picked up immediately:
+By default, this installs to `${CODEX_HOME:-$HOME/.codex}/skills/hn-local-image`.
+Use `--skills-dir` for a custom skills root, or `--force` to overwrite an
+existing install. If you already installed the CLI persistently with
+`uv tool install hn-local-image`, `hn-local-image install-skill` works too.
+
+For local skill development from a repo checkout, symlink it instead so changes
+in this repo are picked up immediately:
 
 ```bash
 mkdir -p "${CODEX_HOME:-$HOME/.codex}/skills"
-ln -sfn "$(pwd)/skills/hn-local-image" "${CODEX_HOME:-$HOME/.codex}/skills/hn-local-image"
+ln -sfn "$(pwd)/hn_local_image_assets/skills/hn-local-image" "${CODEX_HOME:-$HOME/.codex}/skills/hn-local-image"
 ```
 
 After installing, ask Codex to use `$hn-local-image` for Hacker News headline
@@ -217,6 +221,7 @@ uv run main.py compare --all-styles --target eink
 
 This produces a `generated/compare/<timestamp>/` directory with one subfolder per style, each containing:
 - One `.png` per image model (`z-image-turbo.png`, `flux2-klein-4b.png`, `flux2-klein-9b.png`, `ernie-image-turbo.png`, `ideogram-4-fp8.png`)
+- A `comparison-grid.png` contact sheet with every generated image, model watermark, and generation time
 - A `comparison.json` sidecar with prompt details, seed, and per-model timing
 - A root `comparison.json` aggregating all styles (when using `--all-styles`)
 

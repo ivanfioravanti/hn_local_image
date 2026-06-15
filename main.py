@@ -7,14 +7,16 @@ import base64
 import random
 import subprocess
 import sys
+import shutil
 import requests
 import tomllib
 import typer._click.exceptions as click_exceptions
-from PIL import Image
+from PIL import Image, ImageDraw, ImageFont
 from typing import Optional
 from pathlib import Path
 from io import BytesIO
 from dotenv import load_dotenv
+from importlib import resources
 from importlib.metadata import PackageNotFoundError, version as package_version
 
 from fetcher import fetch_hn_headlines
@@ -39,6 +41,7 @@ __version__ = get_package_version()
 
 app = typer.Typer(help=f"hn-local-image {__version__}: Generates daily AI art from Hacker News headlines.")
 
+SKILL_NAME = "hn-local-image"
 AVAILABLE_IMAGE_MODELS = ", ".join(IMAGE_MODELS.keys())
 
 def version_callback(value: bool):
@@ -62,6 +65,178 @@ def describe_image_model_config(model_config: dict) -> str:
     if "preset" in model_config:
         return f"preset={model_config['preset']}"
     return f"steps={model_config['steps']}, guidance={model_config['guidance']}"
+
+def image_model_label(model_id: str) -> str:
+    labels = {
+        "z-image-turbo": "Z-Image Turbo",
+        "flux2-klein-4b": "FLUX2 Klein 4B",
+        "flux2-klein-9b": "FLUX2 Klein 9B",
+        "ernie-image-turbo": "Ernie Turbo",
+        "ideogram-4-fp8": "Ideogram 4 FP8",
+    }
+    return labels.get(model_id, model_id)
+
+def load_ui_font(size: int):
+    for font_path in (
+        "/System/Library/Fonts/Helvetica.ttc",
+        "/Library/Fonts/Arial.ttf",
+        "arial.ttf",
+    ):
+        try:
+            return ImageFont.truetype(font_path, size)
+        except Exception:
+            continue
+    return ImageFont.load_default()
+
+def fit_text(draw: ImageDraw.ImageDraw, text: str, font, max_width: int) -> str:
+    if draw.textbbox((0, 0), text, font=font)[2] <= max_width:
+        return text
+    ellipsis = "..."
+    for end in range(len(text), 0, -1):
+        candidate = text[:end].rstrip() + ellipsis
+        if draw.textbbox((0, 0), candidate, font=font)[2] <= max_width:
+            return candidate
+    return ellipsis
+
+def add_comparison_badge(
+    image: Image.Image,
+    *,
+    model_id: str,
+    elapsed_seconds: float,
+) -> Image.Image:
+    img = image.convert("RGBA")
+    draw = ImageDraw.Draw(img, "RGBA")
+    label_font = load_ui_font(18)
+    meta_font = load_ui_font(15)
+
+    max_text_w = min(img.width - 44, 260)
+    model_text = fit_text(draw, image_model_label(model_id), label_font, max_text_w)
+    elapsed_text = fit_text(draw, f"{elapsed_seconds:.1f}s", meta_font, max_text_w)
+
+    model_bbox = draw.textbbox((0, 0), model_text, font=label_font)
+    elapsed_bbox = draw.textbbox((0, 0), elapsed_text, font=meta_font)
+    text_w = max(model_bbox[2] - model_bbox[0], elapsed_bbox[2] - elapsed_bbox[0])
+    model_h = model_bbox[3] - model_bbox[1]
+    elapsed_h = elapsed_bbox[3] - elapsed_bbox[1]
+
+    pad_x = 10
+    pad_y = 8
+    badge_w = text_w + pad_x * 2
+    badge_h = model_h + elapsed_h + pad_y * 2 + 4
+    x = img.width - badge_w - 12
+    y = img.height - badge_h - 12
+
+    draw.rectangle((x, y, x + badge_w, y + badge_h), fill=(0, 0, 0, 190))
+    draw.text((x + pad_x, y + pad_y), model_text, font=label_font, fill=(255, 255, 255, 255))
+    draw.text(
+        (x + pad_x, y + pad_y + model_h + 4),
+        elapsed_text,
+        font=meta_font,
+        fill=(230, 230, 230, 255),
+    )
+    return img.convert("RGB")
+
+def create_comparison_grid(
+    image_entries: list[dict],
+    *,
+    target: str,
+    style_id: str,
+) -> Image.Image | None:
+    if not image_entries:
+        return None
+
+    thumb_h = 360 if target == "web" else 300
+    label_h = 74
+    gap = 18
+    margin = 24
+    bg = (245, 245, 242)
+    panel_bg = (255, 255, 255)
+    text = (20, 22, 25)
+    muted = (80, 84, 90)
+
+    label_font = load_ui_font(22)
+    meta_font = load_ui_font(18)
+    title_font = load_ui_font(24)
+
+    tiles = []
+    for entry in image_entries:
+        img = entry["image"].convert("RGB")
+        ratio = thumb_h / img.height
+        thumb_w = int(img.width * ratio)
+        thumb = img.resize((thumb_w, thumb_h), Image.Resampling.LANCZOS)
+        tiles.append((entry, thumb))
+
+    tile_w = max(thumb.width for _, thumb in tiles)
+    sheet_w = margin * 2 + tile_w * len(tiles) + gap * (len(tiles) - 1)
+    sheet_h = margin * 2 + 34 + thumb_h + label_h
+    sheet = Image.new("RGB", (sheet_w, sheet_h), bg)
+    draw = ImageDraw.Draw(sheet)
+
+    draw.text((margin, margin), f"{style_id} model comparison", font=title_font, fill=text)
+
+    y_img = margin + 44
+    x = margin
+    for entry, thumb in tiles:
+        panel = Image.new("RGB", (tile_w, thumb_h + label_h), panel_bg)
+        watermarked_thumb = add_comparison_badge(
+            thumb,
+            model_id=entry["model"],
+            elapsed_seconds=entry["elapsed_seconds"],
+        )
+        panel.paste(watermarked_thumb, ((tile_w - thumb.width) // 2, 0))
+        sheet.paste(panel, (x, y_img))
+
+        model_text = fit_text(draw, image_model_label(entry["model"]), label_font, tile_w - 24)
+        elapsed_text = fit_text(draw, f"Generated in {entry['elapsed_seconds']:.1f}s", meta_font, tile_w - 24)
+        draw.text((x + 12, y_img + thumb_h + 12), model_text, font=label_font, fill=text)
+        draw.text((x + 12, y_img + thumb_h + 40), elapsed_text, font=meta_font, fill=muted)
+
+        x += tile_w + gap
+
+    return sheet
+
+def default_codex_skills_dir() -> Path:
+    codex_home = os.environ.get("CODEX_HOME")
+    base_dir = Path(codex_home).expanduser() if codex_home else Path.home() / ".codex"
+    return base_dir / "skills"
+
+def copy_resource_tree(source, destination: Path):
+    if source.is_dir():
+        destination.mkdir(parents=True, exist_ok=True)
+        for child in source.iterdir():
+            copy_resource_tree(child, destination / child.name)
+    else:
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_bytes(source.read_bytes())
+
+def bundled_skill_source():
+    return resources.files("hn_local_image_assets").joinpath("skills", SKILL_NAME)
+
+@app.command("install-skill")
+def install_skill(
+    skills_dir: Optional[Path] = typer.Option(
+        None,
+        "--skills-dir",
+        help="Skills root directory. Defaults to ${CODEX_HOME:-~/.codex}/skills.",
+    ),
+    force: bool = typer.Option(False, "--force", help="Overwrite an existing hn-local-image skill."),
+):
+    """Install the bundled Codex skill for hn-local-image."""
+    target_root = (skills_dir or default_codex_skills_dir()).expanduser()
+    target = target_root / SKILL_NAME
+
+    if target.exists() or target.is_symlink():
+        if not force:
+            typer.echo(f"Skill already exists at {target}. Use --force to overwrite.", err=True)
+            raise typer.Exit(1)
+        if target.is_symlink() or target.is_file():
+            target.unlink()
+        else:
+            shutil.rmtree(target)
+
+    copy_resource_tree(bundled_skill_source(), target)
+    typer.echo(f"Installed {SKILL_NAME} skill to {target}")
+    typer.echo("Restart or reload Codex, then ask: Use $hn-local-image ...")
 
 def display_terminal_preview(png_bytes: bytes, max_cols: int = 0) -> bool:
     """Displays the image inline for Kitty/Ghostty terminals."""
@@ -299,6 +474,7 @@ def _run_compare(
     # 3. Output root
     timestamp = os.environ.get("_COMPARE_TIMESTAMP") or time.strftime("%Y-%m-%d_%H-%M-%S")
     compare_base = Path(output_dir) / "compare" / timestamp
+    compare_base.mkdir(parents=True, exist_ok=True)
 
     # 4. Generate all prompts first, then free the text model
     style_prompts = {}
@@ -333,7 +509,7 @@ def _run_compare(
         style_dir.mkdir(parents=True, exist_ok=True)
 
         results = []
-        style_images = []
+        comparison_entries = []
         for model_id in selected_image_models:
             model_config = IMAGE_MODELS[model_id]
             typer.echo(f"\nGenerating with {model_id} ({describe_image_model_config(model_config)})...")
@@ -360,7 +536,11 @@ def _run_compare(
                 elapsed = time.time() - t0
                 typer.echo(f"  Saved {img_path} ({elapsed:.1f}s)")
 
-                style_images.append(processed_image)
+                comparison_entries.append({
+                    "model": model_id,
+                    "elapsed_seconds": round(elapsed, 1),
+                    "image": processed_image,
+                })
                 results.append({
                     "model": model_id,
                     "config": model_config,
@@ -374,33 +554,25 @@ def _run_compare(
             # Free image model memory before loading the next one
             gc.collect()
 
-        # Show side-by-side preview
-        if len(style_images) > 1:
-            labels = list(IMAGE_MODELS.keys())
-            thumb_h = 900
-            thumbs = []
-            for img, label in zip(style_images, labels):
-                ratio = thumb_h / img.height
-                thumb_w = int(img.width * ratio)
-                thumbs.append(img.resize((thumb_w, thumb_h), Image.Resampling.LANCZOS))
-            composite_w = sum(t.width for t in thumbs) + 20 * (len(thumbs) - 1)
-            composite = Image.new("RGB", (composite_w, thumb_h), (30, 30, 30))
-            x = 0
-            for thumb in thumbs:
-                composite.paste(thumb, (x, 0))
-                x += thumb.width + 20
+        comparison_grid_path = None
+        comparison_grid = create_comparison_grid(
+            comparison_entries,
+            target=target,
+            style_id=style_id,
+        )
+        if comparison_grid is not None:
+            comparison_grid_path = style_dir / "comparison-grid.png"
+            comparison_grid.save(comparison_grid_path)
+            typer.echo(f"  Saved {comparison_grid_path}")
             buf = BytesIO()
-            composite.save(buf, format="PNG")
+            comparison_grid.save(buf, format="PNG")
             typer.echo(f"\n{style_id} comparison:")
             display_terminal_preview(buf.getvalue())
-        elif len(style_images) == 1:
-            buf = BytesIO()
-            style_images[0].save(buf, format="PNG")
-            display_terminal_preview(buf.getvalue(), max_cols=80)
 
         all_results[style_id] = {
             "prompt_details": prompt_result,
             "models": results,
+            "comparison_grid_path": str(comparison_grid_path) if comparison_grid_path else None,
         }
 
         # Save per-style sidecar
@@ -412,6 +584,7 @@ def _run_compare(
             "image_models": selected_image_models,
             "style": style_id,
             "dimensions": f"{gen_w}x{gen_h}",
+            "comparison_grid_path": str(comparison_grid_path) if comparison_grid_path else None,
             "prompt_details": prompt_result,
             "models": results,
         }

@@ -1,0 +1,4 @@
+interface:
+  display_name: "HN Local Image"
+  short_description: "Generate HN artwork locally from PyPI."
+  default_prompt: "Use $hn-local-image to generate a Hacker News headline image."

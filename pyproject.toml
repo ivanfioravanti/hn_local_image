@@ -1,6 +1,6 @@
 [project]
 name = "hn-local-image"
-version = "0.2.2"
+version = "0.3.0"
 description = "Generates daily AI art from Hacker News headlines using local Apple Silicon"
 readme = "README.md"
 requires-python = ">=3.12"
@@ -23,3 +23,10 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
 py-modules = ["main", "fetcher", "prompter", "generator", "processor"]
+packages = ["hn_local_image_assets", "hn_local_image_assets.skills"]
+
+[tool.setuptools.package-data]
+hn_local_image_assets = [
+    "skills/hn-local-image/SKILL.md",
+    "skills/hn-local-image/agents/openai.yaml",
+]
