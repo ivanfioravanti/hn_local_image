@@ -97,7 +97,7 @@ uv run main.py --model-name "mlx-community/Llama-3.2-8B-Instruct-4bit"
 *   `--style`: The artistic style to use (e.g., `editorial`, `story_scene`, `story_blueprint`, `story_desk`, `story_frontpage`, `original`). Default is `editorial`.
 *   `--target`: The output processing mode (`web` or `eink`). Default is `web`.
 *   `--image-model`: The image generation model to use (`z-image-turbo`, `flux2-klein-4b`, or `flux2-klein-9b`). Default is `z-image-turbo`.
-*   `--model-name`: The Hugging Face repo ID of the MLX text model to use for prompt generation. Default is `mlx-community/Qwen3.5-4B-MLX-8bit`.
+*   `--model-name`: The Hugging Face repo ID of the MLX text model to use for prompt generation. Default is `mlx-community/gemma-4-e4b-it-8bit`.
 *   `--output-dir`: Directory to save the generated images and JSON sidecars. Default is `generated/`.
 *   `--headless`: Run without interaction.
 *   `--headless-upload`: Automatically upload the generated image as a binary payload to a URL. Requires configuring the `WEBHOOK_URL` variable in a `.env` or `.env.example` file.
