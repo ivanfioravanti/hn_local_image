@@ -6,15 +6,16 @@ This is a local-first reimagining of the original concept, allowing you to gener
 
 ## Inspiration & Credits
 
-This project was heavily inspired by and built upon the concepts of two fantastic projects:
+This project was heavily inspired by and built upon the concepts of three fantastic projects:
 
 1.  **[hn_dailyimage](https://github.com/LyalinDotCom/hn_dailyimage):** The original Go-based project that conceived the idea of turning Hacker News headlines into art using Gemini, including the clever post-processing for e-ink displays.
 2.  **[MFlux](https://github.com/filipstrand/mflux):** A stellar line-by-line MLX port of generative image models. MFlux provides the high-performance local image generation engine that makes running this entirely on a Mac possible.
+3.  **[mlx-vlm](https://github.com/Blaizzy/mlx-vlm):** Prince Canuma's MLX-based vision-language model package. mlx-vlm powers the local text model that analyzes the headlines and crafts the image prompts.
 
 ## Features
 
 *   **100% Local Inference:** Uses MLX to run both the text model (for prompt analysis) and the image model (for generation) directly on your Mac.
-*   **Multiple Image Models:** Supports fast models like `z-image-turbo` (default) and the FLUX.2 Klein 4B model. Note: `flux2-klein-9b` is currently disabled due to noisy output issues.
+*   **Multiple Image Models:** Supports `z-image-turbo` (default), FLUX.2 Klein, Ernie Image Turbo, and Ideogram 4 FP8. Ideogram 4 uses its native JSON-caption format and preset sampler for better quality.
 *   **Multiple Styles:** Choose from various artistic directions (e.g., `editorial`, `story_scene`, `story_blueprint`, `story_desk`, `story_frontpage`, `original`).
 *   **Target Profiles:** Output full-color, high-resolution PNGs for the `web`, or heavily processed, dithered 1-bit monochrome images optimized for `eink` displays.
 *   **Terminal Preview:** Automatically previews the generated image directly in your terminal if you are using Kitty or Ghostty.
@@ -31,6 +32,23 @@ All of the examples below are generated with `--target eink`: a 1-bit, dithered 
 | **Story Desk**<br>`--style story_desk` | ![Story Desk Style](docs/images/story_desk.png) |
 | **Story Frontpage**<br>`--style story_frontpage` | ![Story Frontpage Style](docs/images/story_frontpage.png) |
 | **Original**<br>`--style original` | ![Original Style](docs/images/original.png) |
+
+## Model Comparison
+
+Different models interpret prompts in unique ways. Below are examples of how each available model visualizes the same Hacker News headlines (using the `--watermark` flag to identify models):
+
+| Model | Example (with watermark) |
+| :--- | :--- |
+| **Z-Image Turbo** (fastest, ~9 steps) | ![Z-Image Turbo](docs/images/model-comparison/z-image-turbo.png) |
+| **FLUX.2 Klein 4B** (balanced, ~4 steps) | ![FLUX2 Klein 4B](docs/images/model-comparison/flux2-klein-4b.png) |
+| **FLUX.2 Klein 9B** (higher quality, ~4 steps) | ![FLUX2 Klein 9B](docs/images/model-comparison/flux2-klein-9b.png) |
+| **Ernie Image Turbo** (fast, ~4 steps) | ![Ernie Image Turbo](docs/images/model-comparison/ernie-image-turbo.png) |
+| **Ideogram 4 FP8** (high quality, ~20 steps) | ![Ideogram 4 FP8](docs/images/model-comparison/ideogram-4-fp8.png) |
+
+Use the `--watermark` flag to add model identification when comparing outputs:
+```bash
+hn-local-image compare --watermark --style editorial
+```
 
 ## High-Resolution Color Output
 
@@ -96,7 +114,8 @@ uv run main.py --model-name "mlx-community/Llama-3.2-8B-Instruct-4bit"
 
 *   `--style`: The artistic style to use (e.g., `editorial`, `story_scene`, `story_blueprint`, `story_desk`, `story_frontpage`, `original`). Default is `editorial`.
 *   `--target`: The output processing mode (`web` or `eink`). Default is `web`.
-*   `--image-model`: The image generation model to use (`z-image-turbo`, `flux2-klein-4b`, or `flux2-klein-9b`). Default is `z-image-turbo`.
+*   `--image-model`: The image generation model to use (`z-image-turbo`, `flux2-klein-4b`, `flux2-klein-9b`, `ernie-image-turbo`, or `ideogram-4-fp8`). Default is `z-image-turbo`.
+*   `--watermark`: Add a model name watermark to the bottom-right corner of the generated image for easy identification when comparing models.
 *   `--model-name`: The Hugging Face repo ID of the MLX text model to use for prompt generation. Default is `mlx-community/gemma-4-e4b-it-8bit`.
 *   `--output-dir`: Directory to save the generated images and JSON sidecars. Default is `generated/`.
 *   `--headless`: Run without interaction.
@@ -126,6 +145,11 @@ The `compare` command generates images with all available image models using the
 uv run main.py compare --style editorial
 ```
 
+**Compare a selected subset of image models:**
+```bash
+uv run main.py compare --style editorial --image-model z-image-turbo --image-model ideogram-4-fp8
+```
+
 **Compare all styles in one run (shared headlines and seed):**
 ```bash
 uv run main.py compare --all-styles
@@ -137,7 +161,7 @@ uv run main.py compare --all-styles --target eink
 ```
 
 This produces a `generated/compare/<timestamp>/` directory with one subfolder per style, each containing:
-- One `.png` per image model (`z-image-turbo.png`, `flux2-klein-4b.png`, `flux2-klein-9b.png`)
+- One `.png` per image model (`z-image-turbo.png`, `flux2-klein-4b.png`, `flux2-klein-9b.png`, `ernie-image-turbo.png`, `ideogram-4-fp8.png`)
 - A `comparison.json` sidecar with prompt details, seed, and per-model timing
 - A root `comparison.json` aggregating all styles (when using `--all-styles`)
 
