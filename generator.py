@@ -3,12 +3,14 @@ import random
 import gc
 from typing import Any
 
+DEFAULT_IDEOGRAM_PRESET = "V4_TURBO_12"
+
 IMAGE_MODELS = {
     "z-image-turbo": {"steps": 9, "guidance": 4.0},
     "flux2-klein-4b": {"steps": 4, "guidance": 1.0},
     "flux2-klein-9b": {"steps": 4, "guidance": 1.0},
     "ernie-image-turbo": {"steps": 4, "guidance": 1.0},
-    "ideogram-4-fp8": {"preset": "V4_DEFAULT_20"},
+    "ideogram-4-fp8": {"preset": DEFAULT_IDEOGRAM_PRESET},
 }
 
 def build_ideogram_caption(prompt: str | dict[str, Any], *, width: int, height: int) -> str | dict[str, Any]:
@@ -89,7 +91,8 @@ def generate_local_image(
         raise ValueError(f"Unknown image model: {image_model}")
     
     if image_model == "ideogram-4-fp8":
-        print(f"Generating image (seed={seed}, size={width}x{height}, preset={preset or 'V4_DEFAULT_20'})...")
+        preset = preset or DEFAULT_IDEOGRAM_PRESET
+        print(f"Generating image (seed={seed}, size={width}x{height}, preset={preset})...")
         image = model.generate_image(
             prompt=prompt,
             seed=seed,

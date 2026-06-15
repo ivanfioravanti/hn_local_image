@@ -1,5 +1,16 @@
 # Release Notes
 
+## [0.3.1] - 2026-06-15
+
+### Faster Ideogram Default and Stacked Compare Grid
+
+**Changes:**
+- **Ideogram Turbo Default:** `ideogram-4-fp8` now uses the `V4_TURBO_12`
+  preset by default for faster generation.
+- **Stacked Comparison Grid:** `comparison-grid.png` now promotes Ideogram to a
+  centered top row and distributes the remaining models in two-column rows
+  below it.
+
 ## [0.3.0] - 2026-06-15
 
 ### Agent Skill and Model Comparison Contact Sheet

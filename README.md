@@ -47,7 +47,7 @@ Different models interpret prompts in unique ways. Below are examples of how eac
 | **FLUX.2 Klein 4B** (balanced, ~4 steps) | ![FLUX2 Klein 4B](docs/images/model-comparison/flux2-klein-4b.png) |
 | **FLUX.2 Klein 9B** (higher quality, ~4 steps) | ![FLUX2 Klein 9B](docs/images/model-comparison/flux2-klein-9b.png) |
 | **Ernie Image Turbo** (fast, ~4 steps) | ![Ernie Image Turbo](docs/images/model-comparison/ernie-image-turbo.png) |
-| **Ideogram 4 FP8** (high quality, ~20 steps) | ![Ideogram 4 FP8](docs/images/model-comparison/ideogram-4-fp8.png) |
+| **Ideogram 4 FP8** (turbo preset, ~12 steps) | ![Ideogram 4 FP8](docs/images/model-comparison/ideogram-4-fp8.png) |
 
 Use the `--watermark` flag to add model identification when comparing outputs:
 ```bash
@@ -221,7 +221,7 @@ uv run main.py compare --all-styles --target eink
 
 This produces a `generated/compare/<timestamp>/` directory with one subfolder per style, each containing:
 - One `.png` per image model (`z-image-turbo.png`, `flux2-klein-4b.png`, `flux2-klein-9b.png`, `ernie-image-turbo.png`, `ideogram-4-fp8.png`)
-- A `comparison-grid.png` contact sheet with every generated image, model watermark, and generation time
+- A `comparison-grid.png` contact sheet with every generated image, model watermark, and generation time. Ideogram is promoted to the top row, with the remaining models arranged below.
 - A `comparison.json` sidecar with prompt details, seed, and per-model timing
 - A root `comparison.json` aggregating all styles (when using `--all-styles`)
 

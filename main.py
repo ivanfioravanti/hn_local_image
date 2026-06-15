@@ -136,6 +136,22 @@ def add_comparison_badge(
     )
     return img.convert("RGB")
 
+def comparison_grid_rows(tiles: list[tuple[dict, Image.Image]]) -> list[list[tuple[dict, Image.Image]]]:
+    if not tiles:
+        return []
+
+    ideogram_tiles = [tile for tile in tiles if tile[0]["model"] == "ideogram-4-fp8"]
+    other_tiles = [tile for tile in tiles if tile[0]["model"] != "ideogram-4-fp8"]
+
+    rows = [[ideogram_tiles[0]]] if ideogram_tiles else []
+    ordered_tiles = other_tiles + ideogram_tiles[1:]
+    if not rows and len(ordered_tiles) <= 2:
+        return [ordered_tiles]
+
+    for index in range(0, len(ordered_tiles), 2):
+        rows.append(ordered_tiles[index:index + 2])
+    return rows
+
 def create_comparison_grid(
     image_entries: list[dict],
     *,
@@ -166,32 +182,38 @@ def create_comparison_grid(
         thumb = img.resize((thumb_w, thumb_h), Image.Resampling.LANCZOS)
         tiles.append((entry, thumb))
 
+    rows = comparison_grid_rows(tiles)
     tile_w = max(thumb.width for _, thumb in tiles)
-    sheet_w = margin * 2 + tile_w * len(tiles) + gap * (len(tiles) - 1)
-    sheet_h = margin * 2 + 34 + thumb_h + label_h
+    row_h = thumb_h + label_h
+    max_columns = max(len(row) for row in rows)
+    sheet_w = margin * 2 + tile_w * max_columns + gap * (max_columns - 1)
+    sheet_h = margin * 2 + 34 + row_h * len(rows) + gap * (len(rows) - 1)
     sheet = Image.new("RGB", (sheet_w, sheet_h), bg)
     draw = ImageDraw.Draw(sheet)
 
     draw.text((margin, margin), f"{style_id} model comparison", font=title_font, fill=text)
 
-    y_img = margin + 44
-    x = margin
-    for entry, thumb in tiles:
-        panel = Image.new("RGB", (tile_w, thumb_h + label_h), panel_bg)
-        watermarked_thumb = add_comparison_badge(
-            thumb,
-            model_id=entry["model"],
-            elapsed_seconds=entry["elapsed_seconds"],
-        )
-        panel.paste(watermarked_thumb, ((tile_w - thumb.width) // 2, 0))
-        sheet.paste(panel, (x, y_img))
+    y = margin + 44
+    for row in rows:
+        row_w = tile_w * len(row) + gap * (len(row) - 1)
+        x = margin + (sheet_w - margin * 2 - row_w) // 2
+        for entry, thumb in row:
+            panel = Image.new("RGB", (tile_w, row_h), panel_bg)
+            watermarked_thumb = add_comparison_badge(
+                thumb,
+                model_id=entry["model"],
+                elapsed_seconds=entry["elapsed_seconds"],
+            )
+            panel.paste(watermarked_thumb, ((tile_w - thumb.width) // 2, 0))
+            sheet.paste(panel, (x, y))
 
-        model_text = fit_text(draw, image_model_label(entry["model"]), label_font, tile_w - 24)
-        elapsed_text = fit_text(draw, f"Generated in {entry['elapsed_seconds']:.1f}s", meta_font, tile_w - 24)
-        draw.text((x + 12, y_img + thumb_h + 12), model_text, font=label_font, fill=text)
-        draw.text((x + 12, y_img + thumb_h + 40), elapsed_text, font=meta_font, fill=muted)
+            model_text = fit_text(draw, image_model_label(entry["model"]), label_font, tile_w - 24)
+            elapsed_text = fit_text(draw, f"Generated in {entry['elapsed_seconds']:.1f}s", meta_font, tile_w - 24)
+            draw.text((x + 12, y + thumb_h + 12), model_text, font=label_font, fill=text)
+            draw.text((x + 12, y + thumb_h + 40), elapsed_text, font=meta_font, fill=muted)
 
-        x += tile_w + gap
+            x += tile_w + gap
+        y += row_h + gap
 
     return sheet
 
