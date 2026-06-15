@@ -68,7 +68,7 @@ def generate_prompt(
     titles: list[str], 
     style_id: str = "editorial", 
     target_id: str = "web", 
-    model_name: str = "mlx-community/Qwen3.5-4B-MLX-8bit"
+    model_name: str = "mlx-community/gemma-4-e4b-it-8bit"
 ) -> dict[str, Any]:
     
     if style_id not in STYLES:
