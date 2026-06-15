@@ -1,5 +1,18 @@
 # Release Notes
 
+## [0.4.0] - 2026-06-15
+
+### Default Generate Command and Compare Grid Cleanup
+
+**Changes:**
+- **Default Generate Command:** `generate` now runs by default when no
+  subcommand is provided, so documented examples like `uv run main.py --target
+  eink` work as expected while `compare`, `install-skill`, `--help`, and
+  `--version` remain explicit.
+- **Comparison Watermark Fix:** `comparison-grid.png` now uses clean generated
+  images for the grid badge, avoiding duplicate watermarks when `compare
+  --watermark` is used.
+
 ## [0.3.2] - 2026-06-15
 
 ### Memory Preflight Checks

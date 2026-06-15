@@ -44,6 +44,8 @@ app = typer.Typer(help=f"hn-local-image {__version__}: Generates daily AI art fr
 
 SKILL_NAME = "hn-local-image"
 AVAILABLE_IMAGE_MODELS = ", ".join(IMAGE_MODELS.keys())
+COMMANDS = {"generate", "compare", "install-skill"}
+TOP_LEVEL_OPTIONS = {"--help", "-h", "--version", "--install-completion", "--show-completion"}
 RECOMMENDED_AVAILABLE_MEMORY_GB = {
     "z-image-turbo": 8,
     "flux2-klein-4b": 10,
@@ -637,20 +639,22 @@ def _run_compare(
                     preset=model_config.get("preset"),
                 )
                 processed_image = process_image(raw_image, target_mode=target)
+                comparison_image = processed_image.copy()
 
                 # Add watermark if requested
+                output_image = processed_image
                 if watermark:
-                    processed_image = add_watermark(processed_image, model_id)
+                    output_image = add_watermark(processed_image, model_id)
 
                 img_path = style_dir / f"{model_id}.png"
-                processed_image.save(img_path)
+                output_image.save(img_path)
                 elapsed = time.time() - t0
                 typer.echo(f"  Saved {img_path} ({elapsed:.1f}s)")
 
                 comparison_entries.append({
                     "model": model_id,
                     "elapsed_seconds": round(elapsed, 1),
-                    "image": processed_image,
+                    "image": comparison_image,
                 })
                 results.append({
                     "model": model_id,
@@ -836,7 +840,16 @@ def compare(
         typer.echo(f"Error: Unknown style '{style}'. Choose from: {list(STYLES.keys())}", err=True)
         raise typer.Exit(1)
 
+def argv_with_default_command(argv: list[str]) -> list[str]:
+    if not argv:
+        return ["generate"]
+    first_arg = argv[0]
+    if first_arg in COMMANDS or first_arg in TOP_LEVEL_OPTIONS:
+        return argv
+    return ["generate", *argv]
+
 def run():
+    sys.argv[1:] = argv_with_default_command(sys.argv[1:])
     try:
         app(standalone_mode=False)
     except click_exceptions.BadOptionUsage as e:
