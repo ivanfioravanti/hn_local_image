@@ -6,6 +6,8 @@ IMAGE_MODELS = {
     "z-image-turbo": {"steps": 9, "guidance": 4.0},
     "flux2-klein-4b": {"steps": 4, "guidance": 1.0},
     "flux2-klein-9b": {"steps": 4, "guidance": 1.0},
+    "ernie-image-turbo": {"steps": 4, "guidance": 1.0},
+    "ideogram-4-fp8": {"steps": 4, "guidance": 1.0},
 }
 
 def generate_local_image(
@@ -40,6 +42,14 @@ def generate_local_image(
         from mflux.models.flux2.variants.txt2img.flux2_klein import Flux2Klein
         from mflux.models.common.config.model_config import ModelConfig
         model = Flux2Klein(quantize=quantize, model_config=ModelConfig.flux2_klein_9b(), lora_paths=lora_paths, lora_scales=lora_scales)
+    elif image_model == "ernie-image-turbo":
+        from mflux.models.ernie_image.variants.txt2img.ernie_image import ErnieImage
+        from mflux.models.common.config.model_config import ModelConfig
+        model = ErnieImage(quantize=quantize, model_config=ModelConfig.ernie_image_turbo(), lora_paths=lora_paths, lora_scales=lora_scales)
+    elif image_model == "ideogram-4-fp8":
+        from mflux.models.ideogram4.variants.txt2img.ideogram4 import Ideogram4
+        from mflux.models.common.config.model_config import ModelConfig
+        model = Ideogram4(quantize=quantize, model_config=ModelConfig.ideogram4_fp8(), lora_paths=lora_paths, lora_scales=lora_scales)
     else:
         raise ValueError(f"Unknown image model: {image_model}")
     
