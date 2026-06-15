@@ -1,6 +1,7 @@
-name: Release to PyPI
+name: Release to PyPI and GitHub
 
 on:
+  workflow_dispatch:
   push:
     tags:
       - 'v*.*.*'
@@ -9,15 +10,63 @@ permissions:
   contents: read
 
 jobs:
-  build:
+  release:
+    name: Build, publish, and release
     runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/p/hn-local-image
+    permissions:
+      contents: write  # REQUIRED for creating tags and GitHub Releases
+      id-token: write  # REQUIRED for trusted publishing
+
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+
+      - name: Read project version
+        id: project
+        run: |
+          version="$(python - <<'PY'
+          import tomllib
+
+          with open("pyproject.toml", "rb") as file:
+              print(tomllib.load(file)["project"]["version"])
+          PY
+          )"
+          tag="v${version}"
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
+          echo "Project version: ${version}"
+          echo "Release tag: ${tag}"
+
+      - name: Validate pushed tag
+        if: github.event_name == 'push'
+        run: |
+          if [ "$GITHUB_REF_NAME" != "${{ steps.project.outputs.tag }}" ]; then
+            echo "::error::Pushed tag $GITHUB_REF_NAME does not match pyproject.toml version ${{ steps.project.outputs.version }}. Expected ${{ steps.project.outputs.tag }}."
+            exit 1
+          fi
+
+      - name: Create version tag
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          TAG: ${{ steps.project.outputs.tag }}
+        run: |
+          if git ls-remote --exit-code --tags origin "refs/tags/${TAG}" >/dev/null 2>&1; then
+            echo "::error::Tag ${TAG} already exists. Bump pyproject.toml before releasing."
+            exit 1
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag "$TAG"
+          git push origin "refs/tags/${TAG}"
 
       - name: Install build dependencies
         run: |
@@ -27,28 +76,16 @@ jobs:
       - name: Build package
         run: python -m build
 
-      - name: Store the distribution packages
-        uses: actions/upload-artifact@v4
-        with:
-          name: python-package-distributions
-          path: dist/
-
-  publish-to-pypi:
-    name: Publish to PyPI
-    needs: build
-    runs-on: ubuntu-latest
-    environment:
-      name: pypi
-      url: https://pypi.org/p/hn-local-image
-    permissions:
-      id-token: write  # REQUIRED for trusted publishing
-
-    steps:
-      - name: Download all the dists
-        uses: actions/download-artifact@v4
-        with:
-          name: python-package-distributions
-          path: dist/
-
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.project.outputs.tag }}
+        run: |
+          gh release create "$TAG" dist/* \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "$TAG" \
+            --generate-notes \
+            --verify-tag
