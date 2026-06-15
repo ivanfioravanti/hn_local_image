@@ -1,8 +1,8 @@
 import json
 import re
 from typing import Any
-import mlx_lm
-from mlx_lm import load, generate
+import mlx_vlm
+from mlx_vlm import load, generate
 
 SHARED_EINK_ART_DIRECTION = "Global art direction for every style: optimize for a 1-bit 800x480 black-and-white e-ink display. White is the dominant field and black is the accent color. Target roughly 75-85% white area and 15-25% black area. Avoid reverse-video compositions, giant black backgrounds, dense black slabs, full-frame darkness, and newspaper pages packed with body copy. Favor clean white space, bold black linework, silhouettes, outlines, sparse labels, and a composition that still reads clearly after monochrome dithering."
 SHARED_WEB_ART_DIRECTION = "Global art direction for every style: optimize for a rich 16:9 web image viewed on modern screens. Use the full tonal range and color where helpful, allow deeper contrast, richer materials, and more atmospheric lighting, but keep the composition readable and attractive as a web hero image. Do not force monochrome, white-dominant, or 1-bit constraints unless the style itself calls for it."
@@ -114,19 +114,22 @@ def generate_prompt(
         prompt += "{"
         
     response = generate(model, tokenizer, prompt=prompt, max_tokens=1000, verbose=False)
-    
+
+    # mlx-vlm returns a GenerationResult object, extract the text
+    response_text = response.text if hasattr(response, 'text') else response
+
     if style_id != "original":
-        response = "{" + response
+        response_text = "{" + response_text
         
     result = {
         "mode": style_id,
         "headlines": titles,
-        "raw_text_output": response,
+        "raw_text_output": response_text,
         "image_prompt": ""
     }
-    
+
     # Strip thinking blocks from the raw response
-    clean_response = response
+    clean_response = response_text
     if "</think>" in clean_response:
         # If the model output a closing think tag (even if we skipped the opening one by appending '{')
         parts = clean_response.split("</think>", 1)

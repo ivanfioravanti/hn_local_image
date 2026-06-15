@@ -66,7 +66,7 @@ def generate(
     output_dir: str = typer.Option(os.environ.get("OUTPUT_DIR", "generated"), help="Directory to save the image"),
     headless: bool = typer.Option(False, "--headless", help="Run without interaction"),
     headless_upload: bool = typer.Option(False, "--headless-upload", help="Generate and upload via WEBHOOK_URL"),
-    model_name: str = typer.Option("mlx-community/Qwen3.5-4B-MLX-8bit", help="Text model for prompt generation"),
+    model_name: str = typer.Option("mlx-community/gemma-4-e4b-it-8bit", help="Text model for prompt generation"),
     image_model: str = typer.Option("z-image-turbo", help="Image model to use (z-image-turbo, flux2-klein-4b, flux2-klein-9b)")
 ):
     if style not in STYLES:
@@ -369,7 +369,7 @@ def compare(
     style: str = typer.Option(os.environ.get("PROMPT_MODE", "editorial"), help="Style to generate: " + ", ".join(STYLES.keys())),
     target: str = typer.Option(os.environ.get("TARGET_MODE", "web"), help="Output target: " + ", ".join(TARGET_PROFILES.keys())),
     output_dir: str = typer.Option(os.environ.get("OUTPUT_DIR", "generated"), help="Directory to save images"),
-    model_name: str = typer.Option("mlx-community/Qwen3.5-4B-MLX-8bit", help="Text model for prompt generation"),
+    model_name: str = typer.Option("mlx-community/gemma-4-e4b-it-8bit", help="Text model for prompt generation"),
     all_styles: bool = typer.Option(False, "--all-styles", help="Generate all styles in a single run with shared headlines and seed"),
 ):
     """Generate one image per image model using the same prompt and seed for comparison."""

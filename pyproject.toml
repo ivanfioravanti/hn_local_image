@@ -7,7 +7,7 @@ requires-python = ">=3.12"
 dependencies = [
     "beautifulsoup4>=4.15.0",
     "mflux>=0.18.0",
-    "mlx-lm>=0.31.3",
+    "mlx-vlm>=0.1.5",
     "pillow>=12.2.0",
     "python-dotenv>=1.2.2",
     "requests>=2.34.2",
